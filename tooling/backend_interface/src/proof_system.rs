@@ -9,7 +9,7 @@ use tempfile::tempdir;
 
 use crate::cli::{
     GatesCommand, InfoCommand, ProofAsFieldsCommand, ProveCommand, VerifyCommand,
-    VkAsFieldsCommand, WriteVkCommand,
+    VkAsFieldsCommand, WriteVkCommand, ContractCommand
 };
 use crate::{Backend, BackendError};
 
@@ -131,7 +131,7 @@ impl Backend {
         circuit: &Circuit,
         proof: &[u8],
         public_inputs: WitnessMap,
-    ) -> Result<(Vec<FieldElement>, FieldElement, Vec<FieldElement>), BackendError> {
+    ) -> Result<(Vec<FieldElement>, FieldElement, Vec<FieldElement>, String), BackendError> {
         let binary_path = self.assert_binary_exists()?;
         self.assert_correct_version()?;
 
@@ -166,9 +166,12 @@ impl Backend {
         let proof_as_fields =
             ProofAsFieldsCommand { proof_path, vk_path: vk_path.clone() }.run(binary_path)?;
 
-        let (vk_hash, vk_as_fields) = VkAsFieldsCommand { vk_path }.run(binary_path)?;
+        let (vk_hash, vk_as_fields) = VkAsFieldsCommand { vk_path: vk_path.clone() }.run(binary_path)?;
 
-        Ok((proof_as_fields, vk_hash, vk_as_fields))
+        // we generate the verifier contract here because we want to share the same VK for the contracts and Prover.toml later on
+        let contract_code = ContractCommand { crs_path: self.crs_directory(), vk_path: vk_path.clone() }.run(binary_path)?;
+
+        Ok((proof_as_fields, vk_hash, vk_as_fields, contract_code))
     }
 }
 
