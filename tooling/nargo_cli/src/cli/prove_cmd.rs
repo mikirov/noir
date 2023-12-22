@@ -30,6 +30,10 @@ pub(crate) struct ProveCommand {
     #[arg(long)]
     verify: bool,
 
+    // Whether the program should generate intermediary proof meant to be used in another circuit
+    #[arg(long)]
+    recursive: bool,
+
     /// The name of the package to prove
     #[clap(long, conflicts_with = "workspace")]
     package: Option<CrateName>,
@@ -75,6 +79,7 @@ pub(crate) fn run(
             &args.prover_name,
             &args.verifier_name,
             args.verify,
+            args.recursive
         )?;
     }
 
@@ -89,6 +94,7 @@ pub(crate) fn prove_package(
     prover_name: &str,
     verifier_name: &str,
     check_proof: bool,
+    recursive: bool
 ) -> Result<(), CliError> {
     // Parse the initial witness values from Prover.toml
     let (inputs_map, _) =
@@ -100,6 +106,7 @@ pub(crate) fn prove_package(
     let public_abi = compiled_program.abi.public_abi();
     let (public_inputs, return_value) = public_abi.decode(&solved_witness)?;
 
+    println!("{:?}", solved_witness);
     write_inputs_to_file(
         &public_inputs,
         &return_value,
@@ -109,12 +116,12 @@ pub(crate) fn prove_package(
         Format::Toml,
     )?;
 
-    let proof = backend.prove(&compiled_program.circuit, solved_witness, false)?;
+    let proof = backend.prove(&compiled_program.circuit, solved_witness, recursive)?;
 
     if check_proof {
         let public_inputs = public_abi.encode(&public_inputs, return_value)?;
         let valid_proof =
-            backend.verify(&proof, public_inputs, &compiled_program.circuit, false)?;
+            backend.verify(&proof, public_inputs, &compiled_program.circuit, recursive)?;
 
         if !valid_proof {
             return Err(CliError::InvalidProof("".into()));

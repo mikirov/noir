@@ -24,6 +24,7 @@ mod new_cmd;
 mod prove_cmd;
 mod test_cmd;
 mod verify_cmd;
+mod genartifacts_cmd;
 
 const GIT_HASH: &str = env!("GIT_COMMIT");
 const IS_DIRTY: &str = env!("GIT_DIRTY");
@@ -74,6 +75,7 @@ enum NargoCommand {
     Test(test_cmd::TestCommand),
     Info(info_cmd::InfoCommand),
     Lsp(lsp_cmd::LspCommand),
+    GenArtifacts(genartifacts_cmd::GenArtifactsCommand),
 }
 
 pub(crate) fn start_cli() -> eyre::Result<()> {
@@ -113,6 +115,7 @@ pub(crate) fn start_cli() -> eyre::Result<()> {
         NargoCommand::Backend(args) => backend_cmd::run(args),
         NargoCommand::Lsp(args) => lsp_cmd::run(&backend, args, config),
         NargoCommand::Fmt(args) => fmt_cmd::run(args, config),
+        NargoCommand::GenArtifacts(args) => genartifacts_cmd::run(&backend, args, config),
     }?;
 
     Ok(())

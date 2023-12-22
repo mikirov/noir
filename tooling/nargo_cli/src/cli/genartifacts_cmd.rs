@@ -1,45 +1,44 @@
-use super::NargoConfig;
-use super::{
-    compile_cmd::compile_bin_package,
-    fs::{inputs::read_inputs_from_file, load_hex_data},
-};
-use crate::{backends::Backend, errors::CliError};
-
 use clap::Args;
-use nargo::constants::{PROOF_EXT, VERIFIER_INPUT_FILE};
+
 use nargo::package::Package;
-use nargo::workspace::Workspace;
 use nargo_toml::{get_package_manifest, resolve_workspace_from_toml, PackageSelection};
 use noirc_abi::input_parser::Format;
 use noirc_driver::{CompileOptions, CompiledProgram, NOIR_ARTIFACT_VERSION_STRING};
 use noirc_frontend::graph::CrateName;
 
-/// Given a proof and a program, verify whether the proof is valid
+use super::NargoConfig;
+use super::{
+    compile_cmd::compile_bin_package,
+    fs::{inputs::read_inputs_from_file, load_hex_data}
+};
+use crate::{backends::Backend, errors::CliError};
+
+use nargo::constants::{PROOF_EXT, VERIFIER_INPUT_FILE};
+use nargo::workspace::Workspace;
+
+
+/// Generates intermediary artifacts for a given circuit
 #[derive(Debug, Clone, Args)]
-pub(crate) struct VerifyCommand {
-    /// The name of the toml file which contains the inputs for the verifier
-    #[clap(long, short, default_value = VERIFIER_INPUT_FILE)]
-    verifier_name: String,
-
-    // Whether the program should generate intermediary proof meant to be used in another circuit
-    #[arg(long)]
-    recursive: bool,
-
-    /// The name of the package verify
+pub(crate) struct GenArtifactsCommand {
+    /// The name of the package to generate artifacts for
     #[clap(long, conflicts_with = "workspace")]
     package: Option<CrateName>,
 
-    /// Verify all packages in the workspace
+    /// Execute all packages in the workspace
     #[clap(long, conflicts_with = "package")]
     workspace: bool,
 
     #[clap(flatten)]
     compile_options: CompileOptions,
+
+    /// The name of the toml file which contains the inputs for the verifier
+    #[clap(long, short, default_value = VERIFIER_INPUT_FILE)]
+    verifier_name: String,
 }
 
 pub(crate) fn run(
     backend: &Backend,
-    args: VerifyCommand,
+    args: GenArtifactsCommand,
     config: NargoConfig,
 ) -> Result<(), CliError> {
     let toml_path = get_package_manifest(&config.program_dir)?;
@@ -59,24 +58,27 @@ pub(crate) fn run(
             package,
             &args.compile_options,
             np_language,
-            &opcode_support,
-        )?;
+            &opcode_support)?;
 
-        verify_package(backend, &workspace, package, program, &args.verifier_name, args.recursive)?;
+        generate_intermediary_artifacts(
+            &backend,
+            &workspace,
+            &package,
+            program,
+            &args.verifier_name
+        )?;
     }
 
     Ok(())
 }
 
-fn verify_package(
+fn generate_intermediary_artifacts(    
     backend: &Backend,
     workspace: &Workspace,
     package: &Package,
     compiled_program: CompiledProgram,
-    verifier_name: &str,
-    recursive: bool
-) -> Result<(), CliError> {
-    // Load public inputs (if any) from `verifier_name`.
+    verifier_name: &str) -> Result<(), CliError> {
+
     let public_abi = compiled_program.abi.public_abi();
     let (public_inputs_map, return_value) =
         read_inputs_from_file(&package.root_dir, verifier_name, Format::Toml, &public_abi)?;
@@ -88,11 +90,18 @@ fn verify_package(
 
     let proof = load_hex_data(&proof_path)?;
 
-    let valid_proof = backend.verify(&proof, public_inputs, &compiled_program.circuit, recursive)?;
+    let (proof_as_fields, vk_hash, vk_as_fields) = backend.get_intermediate_proof_artifacts( &compiled_program.circuit, proof.as_slice(), public_inputs)?;
 
-    if valid_proof {
-        Ok(())
-    } else {
-        Err(CliError::InvalidProof(proof_path))
-    }
+    println!("{:?}",proof_as_fields);
+    println!("{:?}", vk_hash);
+    println!("{:?}", vk_as_fields);
+
+    // let contract_dir = workspace.contracts_directory_path(package);
+    // create_named_dir(&contract_dir, "contract");
+    // let contract_path = contract_dir.join("plonk_vk").with_extension("sol");
+
+    // let path = write_to_file(contract_code.as_bytes(), &contract_path);
+    // println!("[{}] Contract successfully created and located at {path}", package.name);
+
+    Ok(())
 }
